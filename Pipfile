@@ -1,0 +1,19 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+torch = "*"
+setuptools = "==65.5.0"
+wheel = "<0.40.0"
+stable-baselines3 = {version = ">=2.0.0a9", extras = ["extra"]}
+
+[dev-packages]
+flake8 = "*"
+black = "*"
+rope = "*"
+mypy = "*"
+
+[requires]
+python_version = "3.11"
