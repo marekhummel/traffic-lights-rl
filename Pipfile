@@ -14,6 +14,7 @@ flake8 = "*"
 black = "*"
 rope = "*"
 mypy = "*"
+isort = "*"
 
 [requires]
 python_version = "3.11"

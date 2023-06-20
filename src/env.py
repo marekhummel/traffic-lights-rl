@@ -1,91 +1,105 @@
-import numpy as np
+from typing import Any
 import gymnasium as gym
-from gymnasium import spaces
+import numpy as np
 
-from util import ACTION_LEFT, ACTION_RIGHT
+from util import ALL_LIGHTS_OFF, LEFT_LIGHT_ON, RIGHT_LIGHT_ON, Action, Observation
 
 
-class GoLeftEnv(gym.Env):
-    """
-    Custom Environment that follows gym interface.
-    This is a simple env where the agent must learn to go always left.
-    """
-
+class TrafficLightEnv(gym.Env):
     # Because of google colab, we cannot implement the GUI ('human' render mode)
     metadata = {"render_modes": ["console"]}
 
-    def __init__(self, grid_size=10, render_mode="console"):
-        super(GoLeftEnv, self).__init__()
+    def __init__(self, render_mode: str = "console") -> None:
+        super(TrafficLightEnv, self).__init__()
         self.render_mode = render_mode
 
-        # Size of the 1D-grid
-        self.grid_size = grid_size
-        # Initialize the agent at the right of the grid
-        self.agent_pos = grid_size - 1
+        # Params
+        self.num_lights = 2
+        self.cars_passing_per_step = 5
+        self.car_arrival_dist = [0] * 6 + [1] * 9 + [2] * 6 + [3] * 3 + [4] * 2 + [5] * 1
 
-        # Define action and observation space
-        # They must be gym.spaces objects
-        # Example when using discrete actions, we have two: left and right
-        n_actions = 2
-        self.action_space = spaces.Discrete(n_actions)
-        # The observation will be the coordinate of the agent
-        # this can be described both by Discrete and Box space
-        self.observation_space = spaces.Box(low=0, high=self.grid_size, shape=(1,), dtype=np.float32)
+        # State
+        _ = self.reset()
 
-    def reset(self, seed=None, options=None):
+        # Spaces
+        self.action_space = gym.spaces.Discrete(self.num_lights + 1)
+        self.observation_space = gym.spaces.Box(
+            low=np.array([0, 0, 0]), high=np.array([self.num_lights + 1, np.inf, np.inf]), dtype=np.float32
+        )
+
+    def reset(self, seed: Any = None, options: Any = None) -> tuple[Observation, dict]:
         """
         Important: the observation must be a numpy array
         :return: (np.array)
         """
         super().reset(seed=seed, options=options)
-        # Initialize the agent at the right of the grid
-        self.agent_pos = self.grid_size - 1
-        # here we convert to float32 to make it more general (in case we want to use continuous actions)
-        return np.array([self.agent_pos]).astype(np.float32), {}  # empty info dict
 
-    def step(self, action):
-        if action == ACTION_LEFT:
-            self.agent_pos -= 1
-        elif action == ACTION_RIGHT:
-            self.agent_pos += 1
-        else:
+        self.active_light = np.array([ALL_LIGHTS_OFF])
+        self.cars_left = 0
+        self.cars_right = 0
+        return self._to_state(), {}  # empty info dict
+
+    def step(self, action: Action) -> tuple[Observation, int, bool, bool, dict]:
+        if action not in {ALL_LIGHTS_OFF, LEFT_LIGHT_ON, RIGHT_LIGHT_ON}:
             raise ValueError(f"Received invalid action={action} which is not part of the action space")
 
-        # Account for the boundaries of the grid
-        self.agent_pos = np.clip(self.agent_pos, 0, self.grid_size - 1)
+        # Update light
+        self.active_light = action
 
-        # Are we at the left of the grid?
-        terminated = self.agent_pos == 0
-        truncated = False  # we do not limit the number of steps here
+        # Compute reward
+        reward = 0
+        info = {"passed_left": 0, "passed_right": 0}
 
-        # Null reward everywhere except when reaching the goal (left of the grid)
-        reward = 0 if terminated else -1
+        # Let cars pass
+        if self.active_light == LEFT_LIGHT_ON:
+            passing = min(self.cars_left, self.cars_passing_per_step)
+            self.cars_left -= passing
+            reward += passing
+            info["passed_left"] = passing
+        elif self.active_light == RIGHT_LIGHT_ON:
+            passing = min(self.cars_right, self.cars_passing_per_step)
+            self.cars_right -= passing
+            reward += passing
+            info["passed_right"] = passing
 
-        # Optionally we can pass additional info, we are not using that for now
-        info = {}
+        # Waiting cars
+        reward -= max(self.cars_left - 10, 0)
+        reward -= max(self.cars_right - 10, 0)
 
+        # New cars coming
+        new_left, new_right = np.random.choice(self.car_arrival_dist), np.random.choice(self.car_arrival_dist)
+        info.update(new_left=new_left, new_right=new_right)
+        self.cars_left += new_left
+        self.cars_right += new_right
+
+        # Finished ?
+        terminated = bool(self.cars_left == 0 and self.cars_right == 0)
+        truncated = False
+
+        # Return
         return (
-            np.array([self.agent_pos]).astype(np.float32),
+            self._to_state(),
             reward,
             terminated,
             truncated,
             info,
         )
 
-    def render(self):
+    def render(self) -> None:
         # agent is represented as a cross, rest as a dot
         if self.render_mode == "console":
-            print("." * self.agent_pos, end="")
-            print("x", end="")
-            print("." * (self.grid_size - self.agent_pos))
+            print(f"Waiting: {self.cars_left} | {self.cars_right} --- Active Light: {self.active_light}")
 
-    def close(self):
+    def close(self) -> None:
         pass
+
+    def _to_state(self) -> Observation:
+        return np.array([self.active_light, self.cars_left, self.cars_right]).astype(np.float32)
 
 
 if __name__ == "__main__":
     from stable_baselines3.common.env_checker import check_env
 
-    env = GoLeftEnv()
+    env = TrafficLightEnv()
     check_env(env, warn=True)
     print("Env checked successfully")
