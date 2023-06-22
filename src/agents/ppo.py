@@ -1,15 +1,15 @@
-from stable_baselines3 import A2C
+from stable_baselines3 import PPO
 
 from agents.agent import Agent
 from util import Action, Environment, Observation
 
 
-class A2CAgent(Agent):
-    model: A2C
+class PPOAgent(Agent):
+    model: PPO
 
     def __init__(self, env: Environment, learning_steps: int) -> None:
         self.learning_steps = learning_steps
-        self.model = A2C("MlpPolicy", env, verbose=0)
+        self.model = PPO("MlpPolicy", env, verbose=0)
 
     def _train(self) -> None:
         self.model.learn(self.learning_steps)

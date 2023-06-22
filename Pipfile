@@ -8,6 +8,8 @@ torch = "*"
 setuptools = "==65.5.0"
 wheel = "<0.40.0"
 stable-baselines3 = {version = ">=2.0.0a9", extras = ["extra"]}
+matplotlib = "*"
+ipykernel = "*"
 
 [dev-packages]
 flake8 = "*"

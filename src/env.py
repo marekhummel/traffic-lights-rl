@@ -15,17 +15,15 @@ class TrafficLightEnv(gym.Env):
 
         # Params
         self.num_lights = 2
-        self.cars_passing_per_step = 5
-        self.car_arrival_dist = [0] * 6 + [1] * 9 + [2] * 6 + [3] * 3 + [4] * 2 + [5] * 1
+        self.cars_passing_per_step = 4
+        self.car_arrival_dist = [0] * 6 + [1] * 9 + [2] * 6 + [3] * 3 + [4] * 2 + [5] * 0
 
         # State
         _ = self.reset()
 
         # Spaces
         self.action_space = gym.spaces.Discrete(self.num_lights + 1)
-        self.observation_space = gym.spaces.Box(
-            low=np.array([0, 0, 0]), high=np.array([self.num_lights + 1, np.inf, np.inf]), dtype=np.float32
-        )
+        self.observation_space = gym.spaces.Box(low=0, high=np.inf, shape=(4,), dtype=np.float32)
 
     def reset(self, seed: Any = None, options: Any = None) -> tuple[Observation, dict]:
         """
@@ -34,46 +32,50 @@ class TrafficLightEnv(gym.Env):
         """
         super().reset(seed=seed, options=options)
 
-        self.active_light = np.array([ALL_LIGHTS_OFF])
-        self.cars_left = 0
-        self.cars_right = 0
+        self.cars_left: list[int] = [0]
+        self.cars_right: list[int] = [0]
         return self._to_state(), {}  # empty info dict
 
-    def step(self, action: Action) -> tuple[Observation, int, bool, bool, dict]:
+    def step(self, action: Action) -> tuple[Observation, float, bool, bool, dict]:
         if action not in {ALL_LIGHTS_OFF, LEFT_LIGHT_ON, RIGHT_LIGHT_ON}:
             raise ValueError(f"Received invalid action={action} which is not part of the action space")
 
-        # Update light
-        self.active_light = action
-
         # Compute reward
-        reward = 0
+        reward = 0.0
         info = {"passed_left": 0, "passed_right": 0}
 
         # Let cars pass
-        if self.active_light == LEFT_LIGHT_ON:
-            passing = min(self.cars_left, self.cars_passing_per_step)
-            self.cars_left -= passing
+        if action == LEFT_LIGHT_ON:
+            passing = min(len(self.cars_left), self.cars_passing_per_step)
+            self.cars_left = self.cars_left[passing:]
             reward += passing
             info["passed_left"] = passing
-        elif self.active_light == RIGHT_LIGHT_ON:
-            passing = min(self.cars_right, self.cars_passing_per_step)
-            self.cars_right -= passing
+        elif action == RIGHT_LIGHT_ON:
+            passing = min(len(self.cars_right), self.cars_passing_per_step)
+            self.cars_right = self.cars_right[passing:]
             reward += passing
             info["passed_right"] = passing
 
-        # Waiting cars
-        reward -= max(self.cars_left - 10, 0)
-        reward -= max(self.cars_right - 10, 0)
+        # Waiting cars reward
+        all_waiting_cars = self.cars_left + self.cars_right
+        if all_waiting_cars:
+            # reward -= len(all_waiting_cars)
+            # reward -= max(all_waiting_cars) ** 2
+            reward -= sum(all_waiting_cars)
+            # reward -= sum(all_waiting_cars) / len(all_waiting_cars)
+
+        # Waiting cars wait time
+        self.cars_left = [c + 1 for c in self.cars_left]
+        self.cars_right = [c + 1 for c in self.cars_right]
 
         # New cars coming
         new_left, new_right = np.random.choice(self.car_arrival_dist), np.random.choice(self.car_arrival_dist)
         info.update(new_left=new_left, new_right=new_right)
-        self.cars_left += new_left
-        self.cars_right += new_right
+        self.cars_left.extend([0] * new_left)
+        self.cars_right.extend([0] * new_right)
 
         # Finished ?
-        terminated = bool(self.cars_left == 0 and self.cars_right == 0)
+        terminated = bool(len(self.cars_left) == 0 and len(self.cars_right) == 0)
         truncated = False
 
         # Return
@@ -88,13 +90,19 @@ class TrafficLightEnv(gym.Env):
     def render(self) -> None:
         # agent is represented as a cross, rest as a dot
         if self.render_mode == "console":
-            print(f"Waiting: {self.cars_left} | {self.cars_right} --- Active Light: {self.active_light}")
+            left = len(self.cars_left)  # " ".join([str(c) for c in reversed(self.cars_left)])
+            right = len(self.cars_right)  # " ".join([str(c) for c in self.cars_right])
+            print(f"{left} -> |    | <- {right}")
 
     def close(self) -> None:
         pass
 
     def _to_state(self) -> Observation:
-        return np.array([self.active_light, self.cars_left, self.cars_right]).astype(np.float32)
+        def light_state(cars: list[int]) -> tuple[float, float, float]:
+            # return (len(cars), max(cars), sum(cars), sum(cars) / len(cars)) if cars else (0, 0, 0, 0)
+            return (sum(cars), len(cars)) if cars else (0, 0)
+
+        return np.array(light_state(self.cars_left) + light_state(self.cars_right)).astype(np.float32)
 
 
 if __name__ == "__main__":
