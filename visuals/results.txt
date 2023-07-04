@@ -1,0 +1,21 @@
+A2CAgent 
+    20000:      8000 16000
+    2000:       1600 4000
+    200:        20 (only right)
+
+RandomAgent
+    Chooses OFF too often and looses -> 20
+
+SimpleAgent
+    Doesnt reposnd to more traffic on either side
+    -> 200
+
+SimpleAgentBetter
+    -> 12000 / 20000 -> well done
+
+PPOAgent
+    20000:      6000 10000
+    2000:        300
+
+DQNAgent:
+    20000:      Complete failure, chooses 0 -> 20
